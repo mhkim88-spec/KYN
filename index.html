@@ -136,7 +136,6 @@
                 };
             });
 
-            // 우회 로직이 적용된 새로운 Save 함수
             const saveToHistory = async () => {
                 const newRecord = {
                     id: Date.now(),
@@ -154,12 +153,9 @@
                 try {
                     localStorage.setItem('kyn_history', JSON.stringify(updatedHistory));
                 } catch (e) {
-                    // 기기 저장이 차단되더라도 함수를 종료하지 않음
                     localSaveSuccess = false;
-                    console.warn("기기 저장 실패 (보안 차단)");
                 }
 
-                // 구글 시트 연동 시도
                 if (webhookUrl && webhookUrl.startsWith('http')) {
                     try {
                         await fetch(webhookUrl, {
@@ -384,8 +380,12 @@
                 const chartWidth = 324; 
                 const centerX = chartWidth / 2;
                 
+                // [수정된 부분] 1:1 완벽 비율 (왜곡 방지)
                 const pixelsPerYardY = chartRenderHeight / yRange;
-                const pixelsPerYardX = chartWidth / 50; 
+                const pixelsPerYardX = pixelsPerYardY; // X축 픽셀 비율을 Y축과 동일하게 맞춤 (True Scale)
+                
+                // 현재 1:1 비율일 때 화면에 들어가는 X축 최대 거리(야드)
+                const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
 
                 return (
                     <div className="bg-gray-100 min-h-screen py-4 flex flex-col items-center">
@@ -406,14 +406,15 @@
                                     );
                                 })}
 
-                                {/* 세로 그리드 (X축: 5야드 간격, 좌우 편차 - 모든 5단위에 라벨 표시) */}
-                                {[-25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25].map(dist => {
-                                    const isCenter = dist === 0;
+                                {/* 세로 그리드 (X축: 1:1 비율에 맞춰 동적 렌더링) */}
+                                {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
                                     const isMajor = dist % 10 === 0;
+                                    // 화면 폭에 따라 숫자가 겹치는 것을 방지하기 위해, 넓을 때는 10야드 단위로만 표시
+                                    const showLabel = maxViewportX > 50 ? isMajor : true;
                                     return (
                                         <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
                                              style={{ left: centerX + (dist * pixelsPerYardX) }}>
-                                            {!isCenter && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
+                                            {showLabel && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
                                         </div>
                                     )
                                 })}
@@ -421,7 +422,7 @@
                                 {/* 목표 중앙선 (빨간 점선) */}
                                 <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
                                 
-                                {/* 클럽 타원형 데이터 (중심과 텍스트 수직 일치) */}
+                                {/* 클럽 타원형 데이터 */}
                                 {sortedData.map((club, i) => {
                                     const yPos = (maxCarry - club.carry) * pixelsPerYardY;
                                     const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
