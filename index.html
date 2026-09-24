@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Know Your Numbers</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+        .print-area { display: none; }
+        @media print {
+            body { background-color: white; }
+            .no-print { display: none !important; }
+            .print-area { display: block; }
+            @page { margin: 0; size: auto; }
+        }
+        .dispersion-ellipse {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, 0.3);
+            transform: translate(-50%, -50%);
+        }
+        .yardage-book-page {
+            width: 360px;
+            height: 680px;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const defaultClubs = [
+            { id: 'dr', name: 'Dr', carry: 270, backspin: '', descent: '' },
+            { id: '3w', name: '3W', carry: 230, backspin: '', descent: '' },
+            { id: '4h', name: '4H', carry: 215, backspin: '', descent: '' },
+            { id: '5i', name: '5I', carry: 188, backspin: '', descent: '' },
+            { id: '6i', name: '6I', carry: 175, backspin: '', descent: '' },
+            { id: '7i', name: '7I', carry: 162, backspin: '', descent: '' },
+            { id: '8i', name: '8I', carry: 149, backspin: '', descent: '' },
+            { id: '9i', name: '9I', carry: 136, backspin: '', descent: '' },
+            { id: 'pw', name: 'PW', carry: 123, backspin: '', descent: '' },
+            { id: '50', name: '50°', carry: 111, backspin: '', descent: '' },
+            { id: '52', name: '52°', carry: 103, backspin: '', descent: '' },
+            { id: '56', name: '56°', carry: 89, backspin: '', descent: '' },
+            { id: '60', name: '60°', carry: 75, backspin: '', descent: '' },
+        ];
+
+        const colors = [
+            '#440154', '#482878', '#3e4a89', '#31688e', '#26828e', '#1f9e89', 
+            '#35b779', '#6ece58', '#b5de2b', '#fde725', '#f0f921', '#c7e020', '#a0da39'
+        ];
+
+        const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzmam8IfEKmub-ThvuWt0X0bnk2ecNeRo3aDBZQcw5WaC8k_2vnCG1fMoCkDDidt28/exec';
+
+        function App() {
+            const [playerName, setPlayerName] = useState('Bo Kim');
+            const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+            const [clubs, setClubs] = useState(defaultClubs);
+            const [fbPct, setFbPct] = useState(4.0);
+            const [lrPct, setLrPct] = useState(6.0);
+            const [viewMode, setViewMode] = useState('input');
+            const [history, setHistory] = useState([]);
+            const [webhookUrl, setWebhookUrl] = useState(DEFAULT_WEBHOOK_URL);
+
+            const chartContainerRef = useRef(null);
+            const [chartRenderHeight, setChartRenderHeight] = useState(500);
+
+            useEffect(() => {
+                try {
+                    const savedHistory = localStorage.getItem('kyn_history');
+                    if (savedHistory) setHistory(JSON.parse(savedHistory));
+                    
+                    const savedWebhook = localStorage.getItem('kyn_webhook');
+                    if (savedWebhook !== null) {
+                        setWebhookUrl(savedWebhook);
+                    }
+                } catch (e) {
+                    console.warn("로컬 스토리지 접근 차단", e);
+                }
+            }, []);
+
+            const handleWebhookChange = (e) => {
+                const url = e.target.value;
+                setWebhookUrl(url);
+                try { localStorage.setItem('kyn_webhook', url); } catch(e) {}
+            };
+
+            useEffect(() => {
+                if (viewMode === 'chart' && chartContainerRef.current) {
+                    setChartRenderHeight(chartContainerRef.current.clientHeight);
+                }
+            }, [viewMode]);
+
+            const handleClubChange = (index, field, value) => {
+                const newClubs = [...clubs];
+                if (field === 'name') {
+                    newClubs[index][field] = value;
+                } else {
+                    newClubs[index][field] = value === '' ? '' : Number(value);
+                }
+                setClubs(newClubs);
+            };
+
+            const addClub = () => {
+                const newClub = { id: 'club_' + Date.now(), name: 'New', carry: 100, backspin: '', descent: '' };
+                setClubs([...clubs, newClub]);
+            };
+
+            const deleteClub = (id) => {
+                setClubs(clubs.filter(c => c.id !== id));
+            };
+
+            const sortClubsByCarry = () => {
+                const sorted = [...clubs].sort((a, b) => b.carry - a.carry);
+                setClubs(sorted);
+            };
+
+            const enrichedClubs = clubs.map((club, index) => {
+                const fbDev = club.carry * (fbPct / 100);
+                const lrDev = club.carry * (lrPct / 100);
+                return {
+                    ...club,
+                    originalIndex: index,
+                    min: Math.round(club.carry - fbDev),
+                    max: Math.round(club.carry + fbDev),
+                    fbDevYds: Math.round(fbDev),
+                    lrDevYds: Math.round(lrDev)
+                };
+            });
+
+            // 우회 로직이 적용된 새로운 Save 함수
+            const saveToHistory = async () => {
+                const newRecord = {
+                    id: Date.now(),
+                    date: date,
+                    playerName: playerName,
+                    fbPct: fbPct,
+                    lrPct: lrPct,
+                    clubs: enrichedClubs
+                };
+                
+                const updatedHistory = [newRecord, ...history];
+                setHistory(updatedHistory);
+                
+                let localSaveSuccess = true;
+                try {
+                    localStorage.setItem('kyn_history', JSON.stringify(updatedHistory));
+                } catch (e) {
+                    // 기기 저장이 차단되더라도 함수를 종료하지 않음
+                    localSaveSuccess = false;
+                    console.warn("기기 저장 실패 (보안 차단)");
+                }
+
+                // 구글 시트 연동 시도
+                if (webhookUrl && webhookUrl.startsWith('http')) {
+                    try {
+                        await fetch(webhookUrl, {
+                            method: 'POST',
+                            mode: 'no-cors', 
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newRecord)
+                        });
+                        
+                        if (localSaveSuccess) {
+                            alert('기기 히스토리 저장 및 구글 스프레드시트 연동이 완료되었습니다.');
+                        } else {
+                            alert('브라우저 제약으로 기기 내역에는 저장되지 않았으나, 구글 스프레드시트로 전송은 완료되었습니다.');
+                        }
+                    } catch (error) {
+                        alert('구글 시트 전송에 실패했습니다. 네트워크 상태나 웹훅 URL을 확인해 주세요.');
+                    }
+                } else {
+                    if (localSaveSuccess) {
+                        alert('현재 세팅이 기기 히스토리에 저장되었습니다.');
+                    } else {
+                        alert('브라우저 보안 설정으로 인해 기기 저장이 차단되었습니다.');
+                    }
+                }
+            };
+
+            const loadFromHistory = (record) => {
+                if (window.confirm(`${record.date} 저장본을 불러오시겠습니까? 현재 데이터는 덮어씌워집니다.`)) {
+                    setPlayerName(record.playerName);
+                    setDate(record.date);
+                    setFbPct(record.fbPct);
+                    setLrPct(record.lrPct);
+                    setClubs(record.clubs);
+                }
+            };
+
+            const deleteHistory = (id) => {
+                if (window.confirm('이 저장본을 삭제하시겠습니까?')) {
+                    const updatedHistory = history.filter(h => h.id !== id);
+                    setHistory(updatedHistory);
+                    try { localStorage.setItem('kyn_history', JSON.stringify(updatedHistory)); } catch (e) {}
+                }
+            };
+
+            const sortedData = [...enrichedClubs].sort((a, b) => b.carry - a.carry);
+
+            const renderInput = () => (
+                <div className="bg-white p-6 rounded shadow max-w-5xl mx-auto my-8 no-print">
+                    <div className="flex justify-between items-center mb-6 border-b pb-4">
+                        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Know Your Numbers</h1>
+                        <button onClick={saveToHistory} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded shadow">
+                            Save Current Setup
+                        </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-gray-50 p-4 rounded border">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Player Name</label>
+                            <input type="text" value={playerName} onChange={e => setPlayerName(e.target.value)} className="block w-full rounded border-gray-300 shadow-sm border p-2" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Date</label>
+                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="block w-full rounded border-gray-300 shadow-sm border p-2" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">F/B 편차 (%)</label>
+                            <input type="number" step="0.1" value={fbPct} onChange={e => setFbPct(e.target.value)} className="block w-full rounded border-gray-300 shadow-sm border p-2 bg-green-50" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">L/R 편차 (%)</label>
+                            <input type="number" step="0.1" value={lrPct} onChange={e => setLrPct(e.target.value)} className="block w-full rounded border-gray-300 shadow-sm border p-2 bg-blue-50" />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-end mb-2">
+                        <h2 className="font-bold text-lg text-gray-800">Bag Setup</h2>
+                        <div className="space-x-2">
+                            <button onClick={sortClubsByCarry} className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded font-bold">거리순 정렬</button>
+                            <button onClick={addClub} className="text-sm bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded font-bold">+ 클럽 추가</button>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto mb-8 border rounded">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-800 text-white">
+                                <tr>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider w-24">Club Name</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider w-24">Carry (y)</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Min</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Max</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-300">L/R Dev</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Backspin</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Descent (°)</th>
+                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-red-300 w-16">삭제</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {enrichedClubs.map((club) => {
+                                    const origIndex = club.originalIndex;
+                                    return (
+                                        <tr key={club.id} className="hover:bg-gray-50 transition-colors text-center">
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <input type="text" value={club.name} onChange={e => handleClubChange(origIndex, 'name', e.target.value)} className="w-16 border rounded p-1 font-bold text-center mx-auto" />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <input type="number" value={club.carry} onChange={e => handleClubChange(origIndex, 'carry', e.target.value)} className="w-20 border rounded p-1 text-center font-bold bg-yellow-50 mx-auto" />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-green-600 font-medium">{club.min}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-green-600 font-medium">{club.max}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-blue-600 font-medium">±{club.lrDevYds}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <input type="number" value={club.backspin} onChange={e => handleClubChange(origIndex, 'backspin', e.target.value)} className="w-20 border rounded p-1 text-center text-sm mx-auto" placeholder="rpm" />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <input type="number" step="0.1" value={club.descent} onChange={e => handleClubChange(origIndex, 'descent', e.target.value)} className="w-16 border rounded p-1 text-center text-sm mx-auto" placeholder="deg" />
+                                            </td>
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                <button onClick={() => deleteClub(club.id)} className="bg-red-100 hover:bg-red-200 text-red-600 font-bold px-2 py-1 rounded text-xs transition-colors">X</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div className="mt-6 flex justify-center space-x-4 mb-10">
+                        <button onClick={() => setViewMode('table')} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded shadow text-lg">View Yardage Table</button>
+                        <button onClick={() => setViewMode('chart')} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded shadow text-lg">View Dispersion Chart</button>
+                    </div>
+
+                    <div className="border-t border-b py-6 mb-8 bg-indigo-50 px-4 rounded">
+                        <h2 className="text-lg font-bold mb-2 text-indigo-900">Google Sheets 연동 설정</h2>
+                        <p className="text-sm text-indigo-700 mb-2">Google Apps Script 웹 앱 URL이 입력되어 있습니다. 언제든 새 URL로 덮어쓰기하여 연동 대상을 바꿀 수 있습니다.</p>
+                        <input type="text" value={webhookUrl} onChange={handleWebhookChange} placeholder="https://script.google.com/macros/s/.../exec" className="w-full rounded border-indigo-300 shadow-sm border p-2 text-sm bg-white" />
+                    </div>
+
+                    <div>
+                        <h2 className="text-xl font-bold mb-4 text-gray-800">Saved History</h2>
+                        {history.length > 0 ? (
+                            <ul className="divide-y divide-gray-200 border rounded bg-white">
+                                {history.map(record => (
+                                    <li key={record.id} className="p-4 flex flex-col md:flex-row md:justify-between md:items-center hover:bg-gray-50 gap-4">
+                                        <div>
+                                            <span className="font-bold text-gray-800">{record.date}</span>
+                                            <span className="ml-2 text-gray-600 font-medium">- {record.playerName}</span>
+                                            <span className="ml-3 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">(F/B: {record.fbPct}%, L/R: {record.lrPct}%)</span>
+                                        </div>
+                                        <div className="space-x-2 shrink-0">
+                                            <button onClick={() => loadFromHistory(record)} className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1.5 px-4 rounded text-sm font-bold transition-colors">Load</button>
+                                            <button onClick={() => deleteHistory(record.id)} className="bg-red-100 hover:bg-red-200 text-red-800 py-1.5 px-4 rounded text-sm font-bold transition-colors">Delete</button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className="text-center py-8 bg-gray-50 rounded border border-dashed border-gray-300">
+                                <p className="text-gray-500">저장된 야디지 세팅이 없습니다.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            const renderOutputHeader = (title) => (
+                <div className="text-center mb-3 border-b-2 border-gray-800 pb-2 shrink-0">
+                    <h2 className="text-xl font-black uppercase tracking-widest text-gray-900">{title}</h2>
+                    <div className="flex justify-between text-xs mt-2 text-gray-700 font-bold px-2">
+                        <span>{playerName}</span>
+                        <span>{date}</span>
+                    </div>
+                    <div className="text-[10px] mt-1 text-gray-500 font-medium">Margin: F/B ±{fbPct}%, L/R ±{lrPct}%</div>
+                </div>
+            );
+
+            const renderOutputNav = () => (
+                <div className="w-[360px] mx-auto flex justify-between items-center mb-4 no-print mt-6">
+                    <button onClick={() => setViewMode('input')} className="bg-white border-2 border-gray-300 hover:bg-gray-100 text-gray-800 px-4 py-2 rounded shadow font-bold text-sm">&larr; Edit Setup</button>
+                    <button onClick={() => window.print()} className="bg-gray-800 hover:bg-black text-white px-6 py-2 rounded shadow font-bold tracking-widest text-sm">PRINT</button>
+                </div>
+            );
+
+            const renderYardageTable = () => (
+                <div className="bg-gray-100 min-h-screen py-4 flex flex-col items-center">
+                    {renderOutputNav()}
+                    <div className="yardage-book-page border-2 border-gray-800 p-4 shadow-xl">
+                        {renderOutputHeader('Know Your Numbers')}
+                        <div className="flex-1 overflow-hidden mt-2">
+                            <table className="w-full text-center h-full table-fixed">
+                                <thead>
+                                    <tr className="border-b-2 border-gray-800 text-[11px] uppercase bg-gray-100 h-8">
+                                        <th className="w-1/5">Club</th>
+                                        <th className="w-1/5 text-gray-500">Min</th>
+                                        <th className="w-1/4 font-black text-sm bg-gray-800 text-white">Carry</th>
+                                        <th className="w-1/5 text-gray-500">Max</th>
+                                        <th className="w-1/5 border-l text-blue-700">L/R</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedData.map((club, i) => (
+                                        <tr key={club.id} className="border-b border-gray-200">
+                                            <td className="font-bold text-gray-800 text-[13px]">{club.name}</td>
+                                            <td className="text-gray-500 text-[11px] font-medium">{club.min}</td>
+                                            <td className="font-black text-[17px] bg-gray-50 text-black">{club.carry}</td>
+                                            <td className="text-gray-500 text-[11px] font-medium">{club.max}</td>
+                                            <td className="text-[11px] text-blue-600 border-l font-bold">±{club.lrDevYds}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderChart = () => {
+                const validCarries = sortedData.map(c => c.carry).filter(c => c > 0);
+                const maxCarry = validCarries.length > 0 ? Math.max(...validCarries) + 15 : 300;
+                const minCarry = validCarries.length > 0 ? Math.min(...validCarries) - 15 : 50;
+                
+                const yRange = Math.max(maxCarry - minCarry, 50); 
+                const chartWidth = 324; 
+                const centerX = chartWidth / 2;
+                
+                const pixelsPerYardY = chartRenderHeight / yRange;
+                const pixelsPerYardX = chartWidth / 50; 
+
+                return (
+                    <div className="bg-gray-100 min-h-screen py-4 flex flex-col items-center">
+                        {renderOutputNav()}
+                        <div className="yardage-book-page border-2 border-gray-800 p-4 shadow-xl">
+                            {renderOutputHeader('Dispersion Map')}
+                            <div ref={chartContainerRef} className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-2">
+                                
+                                {/* 가로 그리드 (Y축: 10야드 간격) */}
+                                {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
+                                    .filter(dist => dist >= minCarry && dist <= maxCarry)
+                                    .map(dist => {
+                                    return (
+                                        <div key={`h-${dist}`} className="absolute w-full z-0 border-t border-gray-300"
+                                             style={{ top: (maxCarry - dist) * pixelsPerYardY }}>
+                                            <span className="bg-[#fafafa] px-1 relative -top-1.5 font-medium text-[9px] text-gray-400">{dist}</span>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* 세로 그리드 (X축: 5야드 간격, 좌우 편차 - 모든 5단위에 라벨 표시) */}
+                                {[-25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25].map(dist => {
+                                    const isCenter = dist === 0;
+                                    const isMajor = dist % 10 === 0;
+                                    return (
+                                        <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
+                                             style={{ left: centerX + (dist * pixelsPerYardX) }}>
+                                            {!isCenter && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
+                                        </div>
+                                    )
+                                })}
+
+                                {/* 목표 중앙선 (빨간 점선) */}
+                                <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
+                                
+                                {/* 클럽 타원형 데이터 (중심과 텍스트 수직 일치) */}
+                                {sortedData.map((club, i) => {
+                                    const yPos = (maxCarry - club.carry) * pixelsPerYardY;
+                                    const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
+                                    const heightPx = club.fbDevYds * 2 * pixelsPerYardY;
+                                    const color = colors[i % colors.length];
+                                    
+                                    return (
+                                        <div key={club.id} className="absolute w-full z-20" style={{ top: yPos }}>
+                                            <div className="dispersion-ellipse"
+                                                 style={{ 
+                                                     left: centerX,
+                                                     width: widthPx, 
+                                                     height: heightPx, 
+                                                     backgroundColor: color, 
+                                                     opacity: 0.35 
+                                                 }}>
+                                            </div>
+                                            <div className="absolute text-[10.5px] font-bold text-gray-900 whitespace-nowrap"
+                                                 style={{ 
+                                                     left: centerX + (widthPx/2) + 6,
+                                                     top: 0,
+                                                     transform: 'translateY(-50%)' 
+                                                 }}>
+                                                {club.name} ({club.carry})
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div>
+                    {viewMode === 'input' && renderInput()}
+                    {viewMode === 'table' && renderYardageTable()}
+                    {viewMode === 'chart' && renderChart()}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
