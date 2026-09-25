@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<link rel="apple-touch-icon" href="kyn-icon.svg">
-<link rel="icon" type="image/svg+xml" href="kyn-icon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Know Your Numbers</title>
+    
+    <!-- 🖥️ 데스크톱 및 모바일 아이콘 설정 -->
+    <link rel="icon" type="image/svg+xml" href="kyn-icon.svg">
+    <link rel="apple-touch-icon" href="kyn-icon.svg">
+    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -390,7 +393,6 @@
 
             const renderChart = () => {
                 const validCarries = sortedData.map(c => c.carry).filter(c => c > 0);
-                // 최고/최저 거리 기준에 정확히 상하단 패딩(10야드)만 부여하여 불필요한 공백 제거
                 const maxCarry = validCarries.length > 0 ? Math.max(...validCarries) + 12 : 300;
                 const minCarry = validCarries.length > 0 ? Math.min(...validCarries) - 12 : 50;
                 
@@ -403,10 +405,8 @@
                         {renderOutputNav()}
                         <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
                             {renderOutputHeader('Dispersion Map')}
-                            {/* Flexbox를 적용하여 부모 높이 안에서 차트 영역이 남은 공간을 100% 꽉 채우도록 설정 */}
                             <div className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-1 flex flex-col">
                                 <div className="absolute inset-0 w-full h-full">
-                                    {/* 컴포넌트 내부에서 비율 계산을 위해 DOM 렌더링 측정을 활용 */}
                                     <ChartInner 
                                         sortedData={sortedData} 
                                         maxCarry={maxCarry} 
@@ -432,7 +432,6 @@
             );
         }
 
-        // 차트 영역의 실제 픽셀 높이를 완벽하게 감지하여 1:1 비율로 스케일링하는 내부 컴포넌트
         function ChartInner({ sortedData, maxCarry, minCarry, yRange, chartWidth, centerX, colors }) {
             const containerRef = useRef(null);
             const [height, setHeight] = useState(500);
@@ -451,12 +450,11 @@
             }, []);
 
             const pixelsPerYardY = height / yRange;
-            const pixelsPerYardX = pixelsPerYardY; // 1:1 True Scale
+            const pixelsPerYardX = pixelsPerYardY; 
             const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
 
             return (
                 <div ref={containerRef} className="relative w-full h-full">
-                    {/* Y축 그리드 (10야드 단위) */}
                     {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
                         .filter(dist => dist >= minCarry && dist <= maxCarry)
                         .map(dist => {
@@ -468,7 +466,6 @@
                         );
                     })}
 
-                    {/* X축 그리드 */}
                     {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
                         const isMajor = dist % 10 === 0;
                         const showLabel = maxViewportX > 50 ? isMajor : true;
@@ -480,10 +477,8 @@
                         )
                     })}
 
-                    {/* 중앙선 */}
                     <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
                     
-                    {/* 클럽 타원형 데이터 */}
                     {sortedData.map((club, i) => {
                         const yPos = (maxCarry - club.carry) * pixelsPerYardY;
                         const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
