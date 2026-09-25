@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -14,7 +15,14 @@
             body { background-color: white; }
             .no-print { display: none !important; }
             .print-area { display: block; }
-            @page { margin: 0; size: auto; }
+            /* 인쇄 시 전체 크기를 30% 축소 (70% 크기로 렌더링) */
+            .yardage-book-page {
+                transform: scale(0.7);
+                transform-origin: top center;
+                box-shadow: none !important;
+                border: 2px solid #000 !important;
+            }
+            @page { margin: 10mm; size: auto; }
         }
         .dispersion-ellipse {
             position: absolute;
@@ -24,7 +32,8 @@
         }
         .yardage-book-page {
             width: 360px;
-            height: 680px;
+            min-height: 560px;
+            max-height: 90vh;
             display: flex;
             flex-direction: column;
             background-color: white;
@@ -70,12 +79,28 @@
             const [webhookUrl, setWebhookUrl] = useState(DEFAULT_WEBHOOK_URL);
 
             const chartContainerRef = useRef(null);
-            const [chartRenderHeight, setChartRenderHeight] = useState(500);
+            const [chartRenderHeight, setChartRenderHeight] = useState(420);
 
+            // 초기 로딩 시 로컬 스토리지 데이터 및 최근 기록 자동 불러오기
             useEffect(() => {
                 try {
                     const savedHistory = localStorage.getItem('kyn_history');
-                    if (savedHistory) setHistory(JSON.parse(savedHistory));
+                    if (savedHistory) {
+                        const parsedHistory = JSON.parse(savedHistory);
+                        setHistory(parsedHistory);
+                        
+                        // 가장 최근에 저장된 기록이 존재하면 자동으로 상태에 반영
+                        if (parsedHistory.length > 0) {
+                            const latest = parsedHistory[0];
+                            setPlayerName(latest.playerName || 'Bo Kim');
+                            setDate(latest.date || new Date().toISOString().split('T')[0]);
+                            setFbPct(latest.fbPct ?? 4.0);
+                            setLrPct(latest.lrPct ?? 6.0);
+                            if (latest.clubs && latest.clubs.length > 0) {
+                                setClubs(latest.clubs);
+                            }
+                        }
+                    }
                     
                     const savedWebhook = localStorage.getItem('kyn_webhook');
                     if (savedWebhook !== null) {
@@ -320,45 +345,45 @@
             );
 
             const renderOutputHeader = (title) => (
-                <div className="text-center mb-3 border-b-2 border-gray-800 pb-2 shrink-0">
-                    <h2 className="text-xl font-black uppercase tracking-widest text-gray-900">{title}</h2>
-                    <div className="flex justify-between text-xs mt-2 text-gray-700 font-bold px-2">
+                <div className="text-center mb-2 border-b-2 border-gray-800 pb-1.5 shrink-0">
+                    <h2 className="text-lg font-black uppercase tracking-widest text-gray-900">{title}</h2>
+                    <div className="flex justify-between text-[11px] mt-1 text-gray-700 font-bold px-2">
                         <span>{playerName}</span>
                         <span>{date}</span>
                     </div>
-                    <div className="text-[10px] mt-1 text-gray-500 font-medium">Margin: F/B ±{fbPct}%, L/R ±{lrPct}%</div>
+                    <div className="text-[9px] mt-0.5 text-gray-500 font-medium">Margin: F/B ±{fbPct}%, L/R ±{lrPct}%</div>
                 </div>
             );
 
             const renderOutputNav = () => (
-                <div className="w-[360px] mx-auto flex justify-between items-center mb-4 no-print mt-6">
+                <div className="w-[360px] mx-auto flex justify-between items-center mb-3 no-print mt-4">
                     <button onClick={() => setViewMode('input')} className="bg-white border-2 border-gray-300 hover:bg-gray-100 text-gray-800 px-4 py-2 rounded shadow font-bold text-sm">&larr; Edit Setup</button>
                     <button onClick={() => window.print()} className="bg-gray-800 hover:bg-black text-white px-6 py-2 rounded shadow font-bold tracking-widest text-sm">PRINT</button>
                 </div>
             );
 
             const renderYardageTable = () => (
-                <div className="bg-gray-100 min-h-screen py-4 flex flex-col items-center">
+                <div className="bg-gray-100 min-h-screen py-2 flex flex-col items-center">
                     {renderOutputNav()}
-                    <div className="yardage-book-page border-2 border-gray-800 p-4 shadow-xl">
+                    <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
                         {renderOutputHeader('Know Your Numbers')}
-                        <div className="flex-1 overflow-hidden mt-2">
-                            <table className="w-full text-center h-full table-fixed">
+                        <div className="flex-1 overflow-y-auto mt-1">
+                            <table className="w-full text-center table-fixed">
                                 <thead>
-                                    <tr className="border-b-2 border-gray-800 text-[11px] uppercase bg-gray-100 h-8">
+                                    <tr className="border-b-2 border-gray-800 text-[11px] uppercase bg-gray-100 h-7">
                                         <th className="w-1/5">Club</th>
                                         <th className="w-1/5 text-gray-500">Min</th>
-                                        <th className="w-1/4 font-black text-sm bg-gray-800 text-white">Carry</th>
+                                        <th className="w-1/4 font-black text-xs bg-gray-800 text-white">Carry</th>
                                         <th className="w-1/5 text-gray-500">Max</th>
                                         <th className="w-1/5 border-l text-blue-700">L/R</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {sortedData.map((club, i) => (
-                                        <tr key={club.id} className="border-b border-gray-200">
-                                            <td className="font-bold text-gray-800 text-[13px]">{club.name}</td>
+                                        <tr key={club.id} className="border-b border-gray-200 h-7">
+                                            <td className="font-bold text-gray-800 text-[12px]">{club.name}</td>
                                             <td className="text-gray-500 text-[11px] font-medium">{club.min}</td>
-                                            <td className="font-black text-[17px] bg-gray-50 text-black">{club.carry}</td>
+                                            <td className="font-black text-[15px] bg-gray-50 text-black">{club.carry}</td>
                                             <td className="text-gray-500 text-[11px] font-medium">{club.max}</td>
                                             <td className="text-[11px] text-blue-600 border-l font-bold">±{club.lrDevYds}</td>
                                         </tr>
@@ -379,21 +404,17 @@
                 const chartWidth = 324; 
                 const centerX = chartWidth / 2;
                 
-                // [수정된 부분] 1:1 완벽 비율 (왜곡 방지)
                 const pixelsPerYardY = chartRenderHeight / yRange;
-                const pixelsPerYardX = pixelsPerYardY; // X축 픽셀 비율을 Y축과 동일하게 맞춤 (True Scale)
-                
-                // 현재 1:1 비율일 때 화면에 들어가는 X축 최대 거리(야드)
+                const pixelsPerYardX = pixelsPerYardY; 
                 const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
 
                 return (
-                    <div className="bg-gray-100 min-h-screen py-4 flex flex-col items-center">
+                    <div className="bg-gray-100 min-h-screen py-2 flex flex-col items-center">
                         {renderOutputNav()}
-                        <div className="yardage-book-page border-2 border-gray-800 p-4 shadow-xl">
+                        <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
                             {renderOutputHeader('Dispersion Map')}
-                            <div ref={chartContainerRef} className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-2">
+                            <div ref={chartContainerRef} className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-1" style={{minHeight: '400px'}}>
                                 
-                                {/* 가로 그리드 (Y축: 10야드 간격) */}
                                 {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
                                     .filter(dist => dist >= minCarry && dist <= maxCarry)
                                     .map(dist => {
@@ -405,10 +426,8 @@
                                     );
                                 })}
 
-                                {/* 세로 그리드 (X축: 1:1 비율에 맞춰 동적 렌더링) */}
                                 {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
                                     const isMajor = dist % 10 === 0;
-                                    // 화면 폭에 따라 숫자가 겹치는 것을 방지하기 위해, 넓을 때는 10야드 단위로만 표시
                                     const showLabel = maxViewportX > 50 ? isMajor : true;
                                     return (
                                         <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
@@ -418,10 +437,8 @@
                                     )
                                 })}
 
-                                {/* 목표 중앙선 (빨간 점선) */}
                                 <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
                                 
-                                {/* 클럽 타원형 데이터 */}
                                 {sortedData.map((club, i) => {
                                     const yPos = (maxCarry - club.carry) * pixelsPerYardY;
                                     const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
@@ -439,7 +456,7 @@
                                                      opacity: 0.35 
                                                  }}>
                                             </div>
-                                            <div className="absolute text-[10.5px] font-bold text-gray-900 whitespace-nowrap"
+                                            <div className="absolute text-[10px] font-bold text-gray-900 whitespace-nowrap"
                                                  style={{ 
                                                      left: centerX + (widthPx/2) + 6,
                                                      top: 0,
@@ -470,4 +487,3 @@
     </script>
 </body>
 </html>
-
