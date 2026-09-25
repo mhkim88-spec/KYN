@@ -31,7 +31,7 @@
         }
         .yardage-book-page {
             width: 380px;
-            min-height: 720px;
+            height: 740px;
             display: flex;
             flex-direction: column;
             background-color: white;
@@ -76,9 +76,6 @@
             const [history, setHistory] = useState([]);
             const [webhookUrl, setWebhookUrl] = useState(DEFAULT_WEBHOOK_URL);
 
-            const chartContainerRef = useRef(null);
-            const [chartRenderHeight, setChartRenderHeight] = useState(540);
-
             useEffect(() => {
                 try {
                     const savedHistory = localStorage.getItem('kyn_history');
@@ -112,12 +109,6 @@
                 setWebhookUrl(url);
                 try { localStorage.setItem('kyn_webhook', url); } catch(e) {}
             };
-
-            useEffect(() => {
-                if (viewMode === 'chart' && chartContainerRef.current) {
-                    setChartRenderHeight(chartContainerRef.current.clientHeight);
-                }
-            }, [viewMode]);
 
             const handleClubChange = (index, field, value) => {
                 const newClubs = [...clubs];
@@ -397,77 +388,33 @@
 
             const renderChart = () => {
                 const validCarries = sortedData.map(c => c.carry).filter(c => c > 0);
-                // 모든 클럽이 여유 있게 다 보이도록 상하단 마진을 30야드로 넉넉히 확보
-                const maxCarry = validCarries.length > 0 ? Math.max(...validCarries) + 30 : 300;
-                const minCarry = validCarries.length > 0 ? Math.min(...validCarries) - 30 : 50;
+                // 최고/최저 거리 기준에 정확히 상하단 패딩(10야드)만 부여하여 불필요한 공백 제거
+                const maxCarry = validCarries.length > 0 ? Math.max(...validCarries) + 12 : 300;
+                const minCarry = validCarries.length > 0 ? Math.min(...validCarries) - 12 : 50;
                 
-                const yRange = Math.max(maxCarry - minCarry, 80); 
+                const yRange = Math.max(maxCarry - minCarry, 50); 
                 const chartWidth = 340; 
                 const centerX = chartWidth / 2;
-                
-                const pixelsPerYardY = chartRenderHeight / yRange;
-                const pixelsPerYardX = pixelsPerYardY; 
-                const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
 
                 return (
                     <div className="bg-gray-100 min-h-screen py-2 flex flex-col items-center">
                         {renderOutputNav()}
                         <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
                             {renderOutputHeader('Dispersion Map')}
-                            <div ref={chartContainerRef} className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-1" style={{minHeight: '520px'}}>
-                                
-                                {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
-                                    .filter(dist => dist >= minCarry && dist <= maxCarry)
-                                    .map(dist => {
-                                    return (
-                                        <div key={`h-${dist}`} className="absolute w-full z-0 border-t border-gray-300"
-                                             style={{ top: (maxCarry - dist) * pixelsPerYardY }}>
-                                            <span className="bg-[#fafafa] px-1 relative -top-1.5 font-medium text-[9px] text-gray-400">{dist}</span>
-                                        </div>
-                                    );
-                                })}
-
-                                {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
-                                    const isMajor = dist % 10 === 0;
-                                    const showLabel = maxViewportX > 50 ? isMajor : true;
-                                    return (
-                                        <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
-                                             style={{ left: centerX + (dist * pixelsPerYardX) }}>
-                                            {showLabel && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
-                                        </div>
-                                    )
-                                })}
-
-                                <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
-                                
-                                {sortedData.map((club, i) => {
-                                    const yPos = (maxCarry - club.carry) * pixelsPerYardY;
-                                    const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
-                                    const heightPx = club.fbDevYds * 2 * pixelsPerYardY;
-                                    const color = colors[i % colors.length];
-                                    
-                                    return (
-                                        <div key={club.id} className="absolute w-full z-20" style={{ top: yPos }}>
-                                            <div className="dispersion-ellipse"
-                                                 style={{ 
-                                                     left: centerX,
-                                                     width: widthPx, 
-                                                     height: heightPx, 
-                                                     backgroundColor: color, 
-                                                     opacity: 0.35 
-                                                 }}>
-                                            </div>
-                                            <div className="absolute text-[10px] font-bold text-gray-900 whitespace-nowrap"
-                                                 style={{ 
-                                                     left: centerX + (widthPx/2) + 6,
-                                                     top: 0,
-                                                     transform: 'translateY(-50%)' 
-                                                 }}>
-                                                {club.name} ({club.carry})
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            {/* Flexbox를 적용하여 부모 높이 안에서 차트 영역이 남은 공간을 100% 꽉 채우도록 설정 */}
+                            <div className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-1 flex flex-col">
+                                <div className="absolute inset-0 w-full h-full">
+                                    {/* 컴포넌트 내부에서 비율 계산을 위해 DOM 렌더링 측정을 활용 */}
+                                    <ChartInner 
+                                        sortedData={sortedData} 
+                                        maxCarry={maxCarry} 
+                                        minCarry={minCarry} 
+                                        yRange={yRange} 
+                                        chartWidth={chartWidth} 
+                                        centerX={centerX} 
+                                        colors={colors} 
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -479,6 +426,90 @@
                     {viewMode === 'input' && renderInput()}
                     {viewMode === 'table' && renderYardageTable()}
                     {viewMode === 'chart' && renderChart()}
+                </div>
+            );
+        }
+
+        // 차트 영역의 실제 픽셀 높이를 완벽하게 감지하여 1:1 비율로 스케일링하는 내부 컴포넌트
+        function ChartInner({ sortedData, maxCarry, minCarry, yRange, chartWidth, centerX, colors }) {
+            const containerRef = useRef(null);
+            const [height, setHeight] = useState(500);
+
+            useEffect(() => {
+                if (containerRef.current) {
+                    setHeight(containerRef.current.clientHeight);
+                }
+                const handleResize = () => {
+                    if (containerRef.current) {
+                        setHeight(containerRef.current.clientHeight);
+                    }
+                };
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            const pixelsPerYardY = height / yRange;
+            const pixelsPerYardX = pixelsPerYardY; // 1:1 True Scale
+            const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
+
+            return (
+                <div ref={containerRef} className="relative w-full h-full">
+                    {/* Y축 그리드 (10야드 단위) */}
+                    {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
+                        .filter(dist => dist >= minCarry && dist <= maxCarry)
+                        .map(dist => {
+                        return (
+                            <div key={`h-${dist}`} className="absolute w-full z-0 border-t border-gray-300"
+                                 style={{ top: (maxCarry - dist) * pixelsPerYardY }}>
+                                <span className="bg-[#fafafa] px-1 relative -top-1.5 font-medium text-[9px] text-gray-400">{dist}</span>
+                            </div>
+                        );
+                    })}
+
+                    {/* X축 그리드 */}
+                    {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
+                        const isMajor = dist % 10 === 0;
+                        const showLabel = maxViewportX > 50 ? isMajor : true;
+                        return (
+                            <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
+                                 style={{ left: centerX + (dist * pixelsPerYardX) }}>
+                                {showLabel && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
+                            </div>
+                        )
+                    })}
+
+                    {/* 중앙선 */}
+                    <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
+                    
+                    {/* 클럽 타원형 데이터 */}
+                    {sortedData.map((club, i) => {
+                        const yPos = (maxCarry - club.carry) * pixelsPerYardY;
+                        const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
+                        const heightPx = club.fbDevYds * 2 * pixelsPerYardY;
+                        const color = colors[i % colors.length];
+                        
+                        return (
+                            <div key={club.id} className="absolute w-full z-20" style={{ top: yPos }}>
+                                <div className="dispersion-ellipse"
+                                     style={{ 
+                                         left: centerX,
+                                         width: widthPx, 
+                                         height: heightPx, 
+                                         backgroundColor: color, 
+                                         opacity: 0.35 
+                                     }}>
+                                </div>
+                                <div className="absolute text-[10px] font-bold text-gray-900 whitespace-nowrap"
+                                     style={{ 
+                                         left: centerX + (widthPx/2) + 6,
+                                         top: 0,
+                                         transform: 'translateY(-50%)' 
+                                     }}>
+                                    {club.name} ({club.carry})
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             );
         }
