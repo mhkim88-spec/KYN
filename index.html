@@ -5,10 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Know Your Numbers</title>
     
-    <!-- 🖥️ 데스크톱 및 모바일 아이콘 설정 -->
-    <link rel="icon" type="image/svg+xml" href="kyn-icon.svg">
-    <link rel="apple-touch-icon" href="kyn-icon.svg">
-    
+    <!-- 🖥️ 데스크탑 브라우저 탭 아이콘 (파일 업로드 불필요, 코드 내장형) -->
+    <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%231f2937'/%3E%3Cpath d='M256 90 L380 155 L256 220 Z' fill='%2338bdf8'/%3E%3Cpath d='M256 90 L256 390' stroke='%23ffffff' stroke-width='22' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='345' r='30' fill='%23f8fafc'/%3E%3Ctext x='256' y='465' font-family='Arial, sans-serif' font-weight='900' font-size='72' fill='%23ffffff' text-anchor='middle' letter-spacing='4'%3EKYN%3C/text%3E%3C/svg%3E">
+    <link id="apple-icon" rel="apple-touch-icon" href="">
+
+    <!-- 📱 iOS/Android 홈 화면 아이콘용 고해상도 PNG 자동 생성 스크립트 -->
+    <script>
+        (function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            const svgElem = document.getElementById('favicon');
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, 512, 512);
+                const appleLink = document.getElementById('apple-icon');
+                if (appleLink) appleLink.href = canvas.toDataURL('image/png');
+            };
+            img.src = svgElem.href;
+        })();
+    </script>
+
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,6 +38,7 @@
             body { background-color: white; }
             .no-print { display: none !important; }
             .print-area { display: block; }
+            /* 요청사항 2: 인쇄 시 사이즈 30% 축소 (70% 스케일) */
             .yardage-book-page {
                 transform: scale(0.7);
                 transform-origin: top center;
@@ -31,12 +50,13 @@
         .dispersion-ellipse {
             position: absolute;
             border-radius: 50%;
-            border: 1px solid rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 0, 0, 0.35);
             transform: translate(-50%, -50%);
+            pointer-events: none;
         }
         .yardage-book-page {
             width: 380px;
-            height: 740px;
+            min-height: 680px;
             display: flex;
             flex-direction: column;
             background-color: white;
@@ -81,6 +101,7 @@
             const [history, setHistory] = useState([]);
             const [webhookUrl, setWebhookUrl] = useState(DEFAULT_WEBHOOK_URL);
 
+            // 요청사항 3: 프로그램 실행 시 가장 최근 저장된 데이터 자동 호출
             useEffect(() => {
                 try {
                     const savedHistory = localStorage.getItem('kyn_history');
@@ -95,7 +116,13 @@
                             setFbPct(latest.fbPct ?? 4.0);
                             setLrPct(latest.lrPct ?? 6.0);
                             if (latest.clubs && latest.clubs.length > 0) {
-                                setClubs(latest.clubs);
+                                // 이전 저장본에 launch 필드가 없더라도 안전하게 호환되도록 처리
+                                setClubs(latest.clubs.map(c => ({
+                                    ...c,
+                                    launch: c.launch ?? '',
+                                    backspin: c.backspin ?? '',
+                                    descent: c.descent ?? ''
+                                })));
                             }
                         }
                     }
@@ -135,18 +162,20 @@
             };
 
             const sortClubsByCarry = () => {
-                const sorted = [...clubs].sort((a, b) => b.carry - a.carry);
+                const sorted = [...clubs].sort((a, b) => Number(b.carry) - Number(a.carry));
                 setClubs(sorted);
             };
 
             const enrichedClubs = clubs.map((club, index) => {
-                const fbDev = club.carry * (fbPct / 100);
-                const lrDev = club.carry * (lrPct / 100);
+                const carryVal = Number(club.carry) || 0;
+                const fbDev = carryVal * (Number(fbPct) / 100);
+                const lrDev = carryVal * (Number(lrPct) / 100);
                 return {
                     ...club,
+                    carry: carryVal,
                     originalIndex: index,
-                    min: Math.round(club.carry - fbDev),
-                    max: Math.round(club.carry + fbDev),
+                    min: Math.round(carryVal - fbDev),
+                    max: Math.round(carryVal + fbDev),
                     fbDevYds: Math.round(fbDev),
                     lrDevYds: Math.round(lrDev)
                 };
@@ -204,7 +233,12 @@
                     setDate(record.date);
                     setFbPct(record.fbPct);
                     setLrPct(record.lrPct);
-                    setClubs(record.clubs);
+                    setClubs(record.clubs.map(c => ({
+                        ...c,
+                        launch: c.launch ?? '',
+                        backspin: c.backspin ?? '',
+                        descent: c.descent ?? ''
+                    })));
                 }
             };
 
@@ -219,10 +253,10 @@
             const sortedData = [...enrichedClubs].sort((a, b) => b.carry - a.carry);
 
             const renderInput = () => (
-                <div className="bg-white p-6 rounded shadow max-w-6xl mx-auto my-8 no-print">
-                    <div className="flex justify-between items-center mb-6 border-b pb-4">
-                        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Know Your Numbers</h1>
-                        <button onClick={saveToHistory} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded shadow">
+                <div className="bg-white p-4 md:p-6 rounded shadow max-w-6xl mx-auto my-4 md:my-8 no-print">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b pb-4 gap-3">
+                        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Know Your Numbers</h1>
+                        <button onClick={saveToHistory} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded shadow">
                             Save Current Setup
                         </button>
                     </div>
@@ -255,18 +289,18 @@
                     </div>
 
                     <div className="overflow-x-auto mb-8 border rounded">
-                        <table className="w-full divide-y divide-gray-200 min-w-[700px]">
+                        <table className="w-full divide-y divide-gray-200 min-w-[720px]">
                             <thead className="bg-gray-800 text-white">
                                 <tr>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Club Name</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Carry (y)</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Min</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Max</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-300">L/R Dev</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-indigo-300">Launch (°)</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Backspin</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider">Descent (°)</th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-red-300">삭제</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider">Club Name</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider">Carry (y)</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Min</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-green-300">Max</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-300">L/R Dev</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-yellow-300">Launch (°)</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider">Backspin</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider">Descent (°)</th>
+                                    <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-red-300">삭제</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -275,25 +309,25 @@
                                     return (
                                         <tr key={club.id} className="hover:bg-gray-50 transition-colors text-center">
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <input type="text" value={club.name} onChange={e => handleClubChange(origIndex, 'name', e.target.value)} className="w-20 border rounded p-1 font-bold text-center mx-auto" />
+                                                <input type="text" value={club.name} onChange={e => handleClubChange(origIndex, 'name', e.target.value)} className="w-16 border rounded p-1 font-bold text-center mx-auto" />
                                             </td>
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <input type="number" value={club.carry} onChange={e => handleClubChange(origIndex, 'carry', e.target.value)} className="w-24 border rounded p-1 text-center font-bold bg-yellow-50 mx-auto" />
+                                                <input type="number" value={clubs[origIndex].carry} onChange={e => handleClubChange(origIndex, 'carry', e.target.value)} className="w-20 border rounded p-1 text-center font-bold bg-yellow-50 mx-auto" />
                                             </td>
                                             <td className="px-2 py-2 whitespace-nowrap text-green-600 font-medium">{club.min}</td>
                                             <td className="px-2 py-2 whitespace-nowrap text-green-600 font-medium">{club.max}</td>
                                             <td className="px-2 py-2 whitespace-nowrap text-blue-600 font-medium">±{club.lrDevYds}</td>
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <input type="number" step="0.1" value={club.launch} onChange={e => handleClubChange(origIndex, 'launch', e.target.value)} className="w-24 border rounded p-1 text-center text-sm mx-auto" placeholder="deg" />
+                                                <input type="number" step="0.1" value={club.launch ?? ''} onChange={e => handleClubChange(origIndex, 'launch', e.target.value)} className="w-20 border rounded p-1 text-center text-sm mx-auto" placeholder="deg" />
                                             </td>
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <input type="number" value={club.backspin} onChange={e => handleClubChange(origIndex, 'backspin', e.target.value)} className="w-24 border rounded p-1 text-center text-sm mx-auto" placeholder="rpm" />
+                                                <input type="number" value={club.backspin ?? ''} onChange={e => handleClubChange(origIndex, 'backspin', e.target.value)} className="w-20 border rounded p-1 text-center text-sm mx-auto" placeholder="rpm" />
                                             </td>
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <input type="number" step="0.1" value={club.descent} onChange={e => handleClubChange(origIndex, 'descent', e.target.value)} className="w-24 border rounded p-1 text-center text-sm mx-auto" placeholder="deg" />
+                                                <input type="number" step="0.1" value={club.descent ?? ''} onChange={e => handleClubChange(origIndex, 'descent', e.target.value)} className="w-20 border rounded p-1 text-center text-sm mx-auto" placeholder="deg" />
                                             </td>
                                             <td className="px-2 py-2 whitespace-nowrap">
-                                                <button onClick={() => deleteClub(club.id)} className="bg-red-100 hover:bg-red-200 text-red-600 font-bold px-3 py-1 rounded text-xs transition-colors">X</button>
+                                                <button onClick={() => deleteClub(club.id)} className="bg-red-100 hover:bg-red-200 text-red-600 font-bold px-2.5 py-1 rounded text-xs transition-colors">X</button>
                                             </td>
                                         </tr>
                                     );
@@ -302,7 +336,7 @@
                         </table>
                     </div>
                     
-                    <div className="mt-6 flex justify-center space-x-4 mb-10">
+                    <div className="mt-6 flex flex-col sm:flex-row justify-center gap-4 mb-10">
                         <button onClick={() => setViewMode('table')} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded shadow text-lg">View Yardage Table</button>
                         <button onClick={() => setViewMode('chart')} className="bg-gray-800 hover:bg-black text-white font-bold py-3 px-8 rounded shadow text-lg">View Dispersion Chart</button>
                     </div>
@@ -358,15 +392,16 @@
                 </div>
             );
 
+            // 요청사항 1: 모바일/PC 어디서든 모든 클럽이 잘리지 않고 한눈에 보이도록 높이 제한 해제
             const renderYardageTable = () => (
                 <div className="bg-gray-100 min-h-screen py-2 flex flex-col items-center">
                     {renderOutputNav()}
-                    <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
+                    <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl" style={{ height: 'auto' }}>
                         {renderOutputHeader('Know Your Numbers')}
-                        <div className="flex-1 overflow-y-auto mt-1">
+                        <div className="mt-1">
                             <table className="w-full text-center table-fixed">
                                 <thead>
-                                    <tr className="border-b-2 border-gray-800 text-[11px] uppercase bg-gray-100 h-7">
+                                    <tr className="border-b-2 border-gray-800 text-[11px] uppercase bg-gray-100 h-8">
                                         <th className="w-1/5">Club</th>
                                         <th className="w-1/5 text-gray-500">Min</th>
                                         <th className="w-1/4 font-black text-xs bg-gray-800 text-white">Carry</th>
@@ -375,8 +410,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {sortedData.map((club, i) => (
-                                        <tr key={club.id} className="border-b border-gray-200 h-7">
+                                    {sortedData.map((club) => (
+                                        <tr key={club.id} className="border-b border-gray-200 h-8">
                                             <td className="font-bold text-gray-800 text-[12px]">{club.name}</td>
                                             <td className="text-gray-500 text-[11px] font-medium">{club.min}</td>
                                             <td className="font-black text-[15px] bg-gray-50 text-black">{club.carry}</td>
@@ -392,32 +427,27 @@
             );
 
             const renderChart = () => {
-                const validCarries = sortedData.map(c => c.carry).filter(c => c > 0);
-                const maxCarry = validCarries.length > 0 ? Math.max(...validCarries) + 12 : 300;
-                const minCarry = validCarries.length > 0 ? Math.min(...validCarries) - 12 : 50;
+                const validClubs = sortedData.filter(c => c.carry > 0);
+                // 가장 긴 클럽의 Max(앞뒤 편차 포함)와 가장 짧은 클럽의 Min까지 모두 포함되도록 상하단 범위 산정
+                const highestPoint = validClubs.length > 0 ? Math.max(...validClubs.map(c => c.carry + c.fbDevYds)) + 8 : 300;
+                const lowestPoint = validClubs.length > 0 ? Math.min(...validClubs.map(c => c.carry - c.fbDevYds)) - 8 : 50;
                 
-                const yRange = Math.max(maxCarry - minCarry, 50); 
-                const chartWidth = 340; 
-                const centerX = chartWidth / 2;
+                const maxCarry = Math.ceil(highestPoint / 10) * 10;
+                const minCarry = Math.floor(lowestPoint / 10) * 10;
+                const yRange = Math.max(maxCarry - minCarry, 50);
 
                 return (
                     <div className="bg-gray-100 min-h-screen py-2 flex flex-col items-center">
                         {renderOutputNav()}
                         <div className="yardage-book-page border-2 border-gray-800 p-3 shadow-xl">
                             {renderOutputHeader('Dispersion Map')}
-                            <div className="relative mx-auto border-2 border-gray-200 bg-[#fafafa] flex-1 w-full overflow-hidden mt-1 flex flex-col">
-                                <div className="absolute inset-0 w-full h-full">
-                                    <ChartInner 
-                                        sortedData={sortedData} 
-                                        maxCarry={maxCarry} 
-                                        minCarry={minCarry} 
-                                        yRange={yRange} 
-                                        chartWidth={chartWidth} 
-                                        centerX={centerX} 
-                                        colors={colors} 
-                                    />
-                                </div>
-                            </div>
+                            <ChartInner 
+                                sortedData={validClubs} 
+                                maxCarry={maxCarry} 
+                                minCarry={minCarry} 
+                                yRange={yRange} 
+                                colors={colors} 
+                            />
                         </div>
                     </div>
                 );
@@ -432,53 +462,114 @@
             );
         }
 
-        function ChartInner({ sortedData, maxCarry, minCarry, yRange, chartWidth, centerX, colors }) {
+        // Tailwind 비동기 로딩과 무관하게 정확한 1:1 비율과 전체 클럽 표시를 보장하는 전용 차트 컴포넌트
+        function ChartInner({ sortedData, maxCarry, minCarry, yRange, colors }) {
             const containerRef = useRef(null);
-            const [height, setHeight] = useState(500);
+            const [dimensions, setDimensions] = useState({ width: 350, height: 600 });
 
             useEffect(() => {
-                if (containerRef.current) {
-                    setHeight(containerRef.current.clientHeight);
-                }
-                const handleResize = () => {
+                if (!containerRef.current) return;
+                const updateSize = () => {
                     if (containerRef.current) {
-                        setHeight(containerRef.current.clientHeight);
+                        const rect = containerRef.current.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            setDimensions({ width: rect.width, height: rect.height });
+                        }
                     }
                 };
-                window.addEventListener('resize', handleResize);
-                return () => window.removeEventListener('resize', handleResize);
-            }, []);
+                updateSize();
+                const observer = new ResizeObserver(updateSize);
+                observer.observe(containerRef.current);
+                window.addEventListener('resize', updateSize);
+                return () => {
+                    observer.disconnect();
+                    window.removeEventListener('resize', updateSize);
+                };
+            }, [yRange]);
 
-            const pixelsPerYardY = height / yRange;
+            const chartWidth = dimensions.width;
+            const chartHeight = dimensions.height;
+            const centerX = chartWidth / 2;
+
+            // 1:1 완벽 비율(True Scale) 적용: 전체 클럽(Dr ~ 60°)이 600px 높이 안에 100% 들어옴
+            const pixelsPerYardY = chartHeight / yRange;
             const pixelsPerYardX = pixelsPerYardY; 
             const maxViewportX = Math.floor((chartWidth / pixelsPerYardX) / 2);
 
             return (
-                <div ref={containerRef} className="relative w-full h-full">
-                    {Array.from({length: Math.ceil(yRange / 10) + 1}, (_, i) => Math.floor(minCarry / 10) * 10 + (i * 10))
-                        .filter(dist => dist >= minCarry && dist <= maxCarry)
+                <div 
+                    ref={containerRef} 
+                    className="mx-auto border-2 border-gray-200 bg-[#fafafa] w-full mt-1"
+                    style={{ position: 'relative', height: '600px', overflow: 'hidden' }}
+                >
+                    {/* 가로 그리드 (Y축: 10야드 단위) */}
+                    {Array.from({length: Math.floor(yRange / 10) + 1}, (_, i) => minCarry + (i * 10))
+                        .map(dist => (
+                            <div key={`h-${dist}`} 
+                                 style={{ 
+                                     position: 'absolute', 
+                                     left: 0, 
+                                     right: 0, 
+                                     top: `${(maxCarry - dist) * pixelsPerYardY}px`,
+                                     borderTop: '1px solid #d1d5db',
+                                     zIndex: 1
+                                 }}>
+                                <span style={{
+                                    backgroundColor: '#fafafa',
+                                    padding: '0 4px',
+                                    position: 'relative',
+                                    top: '-7px',
+                                    fontSize: '9px',
+                                    fontWeight: 600,
+                                    color: '#9ca3af'
+                                }}>{dist}</span>
+                            </div>
+                        ))
+                    }
+
+                    {/* 세로 그리드 (X축: 5야드 간격, 1:1 비율 연동) */}
+                    {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5)
+                        .flatMap(d => d === 0 ? [] : [d, -d])
                         .map(dist => {
-                        return (
-                            <div key={`h-${dist}`} className="absolute w-full z-0 border-t border-gray-300"
-                                 style={{ top: (maxCarry - dist) * pixelsPerYardY }}>
-                                <span className="bg-[#fafafa] px-1 relative -top-1.5 font-medium text-[9px] text-gray-400">{dist}</span>
-                            </div>
-                        );
-                    })}
+                            const isMajor = dist % 10 === 0;
+                            const showLabel = maxViewportX > 45 ? isMajor : true;
+                            return (
+                                <div key={`v-${dist}`} 
+                                     style={{ 
+                                         position: 'absolute', 
+                                         top: 0, 
+                                         bottom: 0, 
+                                         left: `${centerX + (dist * pixelsPerYardX)}px`,
+                                         borderLeft: isMajor ? '1px solid #e5e7eb' : '1px solid #f3f4f6',
+                                         zIndex: 1
+                                     }}>
+                                    {showLabel && (
+                                        <span style={{
+                                            position: 'absolute',
+                                            bottom: '2px',
+                                            transform: 'translateX(-50%)',
+                                            backgroundColor: '#fafafa',
+                                            padding: '0 2px',
+                                            fontSize: '8px',
+                                            color: '#9ca3af'
+                                        }}>{Math.abs(dist)}</span>
+                                    )}
+                                </div>
+                            );
+                        })
+                    }
 
-                    {Array.from({length: Math.ceil(maxViewportX / 5) + 1}, (_, i) => i * 5).flatMap(d => d === 0 ? [] : [d, -d]).map(dist => {
-                        const isMajor = dist % 10 === 0;
-                        const showLabel = maxViewportX > 50 ? isMajor : true;
-                        return (
-                            <div key={`v-${dist}`} className={`absolute top-0 bottom-0 z-0 border-l ${isMajor ? 'border-gray-200' : 'border-gray-100'}`}
-                                 style={{ left: centerX + (dist * pixelsPerYardX) }}>
-                                {showLabel && <span className="absolute bottom-0 -translate-x-1/2 bg-[#fafafa] px-0.5 text-[8px] text-gray-400 mb-1">{Math.abs(dist)}</span>}
-                            </div>
-                        )
-                    })}
-
-                    <div className="absolute top-0 bottom-0 border-l border-dashed border-red-400 z-10" style={{ left: centerX }}></div>
+                    {/* 목표 중앙선 (빨간 점선) */}
+                    <div style={{ 
+                        position: 'absolute', 
+                        top: 0, 
+                        bottom: 0, 
+                        left: `${centerX}px`, 
+                        borderLeft: '1px dashed #f87171', 
+                        zIndex: 10 
+                    }}></div>
                     
+                    {/* 클럽 타원형 데이터 및 평행 정렬 라벨 */}
                     {sortedData.map((club, i) => {
                         const yPos = (maxCarry - club.carry) * pixelsPerYardY;
                         const widthPx = club.lrDevYds * 2 * pixelsPerYardX;
@@ -486,21 +577,25 @@
                         const color = colors[i % colors.length];
                         
                         return (
-                            <div key={club.id} className="absolute w-full z-20" style={{ top: yPos }}>
+                            <div key={club.id} style={{ position: 'absolute', left: 0, right: 0, top: `${yPos}px`, zIndex: 20 }}>
                                 <div className="dispersion-ellipse"
                                      style={{ 
-                                         left: centerX,
-                                         width: widthPx, 
-                                         height: heightPx, 
+                                         left: `${centerX}px`,
+                                         width: `${widthPx}px`, 
+                                         height: `${heightPx}px`, 
                                          backgroundColor: color, 
                                          opacity: 0.35 
                                      }}>
                                 </div>
-                                <div className="absolute text-[10px] font-bold text-gray-900 whitespace-nowrap"
-                                     style={{ 
-                                         left: centerX + (widthPx/2) + 6,
+                                <div style={{ 
+                                         position: 'absolute',
+                                         left: `${centerX + (widthPx / 2) + 6}px`,
                                          top: 0,
-                                         transform: 'translateY(-50%)' 
+                                         transform: 'translateY(-50%)',
+                                         fontSize: '10px',
+                                         fontWeight: 700,
+                                         color: '#111827',
+                                         whiteSpace: 'nowrap'
                                      }}>
                                     {club.name} ({club.carry})
                                 </div>
